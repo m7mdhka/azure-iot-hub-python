@@ -7,9 +7,7 @@
 import pytest
 from azure.iot.hub.protocol.models import AuthenticationMechanism, DeviceCapabilities
 from azure.iot.hub.iothub_registry_manager import IoTHubRegistryManager
-from azure.iot.hub import iothub_amqp_client
 from azure.iot.hub.protocol.iot_hub_gateway_service_ap_is import IotHubGatewayServiceAPIs
-from uamqp import TransportType
 
 """---Constants---"""
 
@@ -61,7 +59,6 @@ class Fake_direct_method_request_with_payload_none:
 
 
 fake_direct_method_request_with_payload_none = Fake_direct_method_request_with_payload_none()
-fake_message_to_send = "fake_message_to_send"
 
 """----Shared fixtures----"""
 
@@ -128,15 +125,6 @@ def mock_module_constructor(mocker):
     return mocker.patch("azure.iot.hub.iothub_registry_manager.Module")
 
 
-@pytest.fixture(scope="function")
-def mock_uamqp_send_message_to_device(mocker):
-    mock_uamqp_send = mocker.patch.object(
-        iothub_amqp_client.IoTHubAmqpClientSharedAccessKeyAuth,
-        "send_message_to_device",
-    )
-    return mock_uamqp_send
-
-
 @pytest.mark.describe("IoTHubRegistryManager - .from_connection_string()")
 class TestFromConnectionString:
     @pytest.mark.parametrize(
@@ -161,71 +149,6 @@ class TestFromConnectionString:
             ),
         ],
     )
-    @pytest.mark.it(
-        "Creates an instance of IotHubGatewayServiceAPIs and IoTHubAmqpClientSharedAccessKeyAuth with the correct arguments"
-    )
-    def test_connection_string_auth(self, mocker, connection_string):
-        amqp_client_init_mock = mocker.patch.object(
-            iothub_amqp_client, "IoTHubAmqpClientSharedAccessKeyAuth"
-        )
-
-        client = IoTHubRegistryManager.from_connection_string(connection_string=connection_string)
-
-        assert repr(client.protocol.config.credentials) == connection_string
-        assert (
-            client.protocol.config.base_url
-            == "https://" + client.protocol.config.credentials["HostName"]
-        )
-        assert amqp_client_init_mock.call_args == mocker.call(
-            client.protocol.config.credentials["HostName"],
-            client.protocol.config.credentials["SharedAccessKeyName"],
-            client.protocol.config.credentials["SharedAccessKey"],
-            TransportType.Amqp,
-        )
-
-    @pytest.mark.parametrize(
-        "connection_string",
-        [
-            pytest.param(
-                "HostName={hostname};DeviceId={device_id};SharedAccessKeyName={skn};SharedAccessKey={sk}".format(
-                    hostname=fake_hostname,
-                    device_id=fake_device_id,
-                    skn=fake_shared_access_key_name,
-                    sk=fake_shared_access_key,
-                ),
-                id="connection string with HostName, DeviceId, SharedAccessKeyName, and SharedAccessKey",
-            ),
-            pytest.param(
-                "HostName={hostname};SharedAccessKeyName={skn};SharedAccessKey={sk}".format(
-                    hostname=fake_hostname,
-                    skn=fake_shared_access_key_name,
-                    sk=fake_shared_access_key,
-                ),
-                id="connection string without DeviceId",
-            ),
-        ],
-    )
-    @pytest.mark.it(
-        "Creates an instance of IotHubGatewayServiceAPIs and IoTHubAmqpClientSharedAccessKeyAuth with the correct arguments and using AMQP over Websocket"
-    )
-    def test_connection_string_auth_amqp_over_websocket(self, mocker, connection_string):
-        amqp_client_init_mock = mocker.patch.object(
-            iothub_amqp_client, "IoTHubAmqpClientSharedAccessKeyAuth"
-        )
-
-        client = IoTHubRegistryManager.from_connection_string(connection_string=connection_string, transport_type=TransportType.AmqpOverWebsocket)
-
-        assert repr(client.protocol.config.credentials) == connection_string
-        assert (
-            client.protocol.config.base_url
-            == "https://" + client.protocol.config.credentials["HostName"]
-        )
-        assert amqp_client_init_mock.call_args == mocker.call(
-            client.protocol.config.credentials["HostName"],
-            client.protocol.config.credentials["SharedAccessKeyName"],
-            client.protocol.config.credentials["SharedAccessKey"],
-            TransportType.AmqpOverWebsocket,
-        )
 
     @pytest.mark.it("Sets the protocol attribute")
     def test_instantiates_auth_and_protocol_attributes(self, iothub_registry_manager):
@@ -271,45 +194,6 @@ class TestFromConnectionString:
         )
         with pytest.raises(ValueError):
             IoTHubRegistryManager.from_connection_string(connection_string)
-
-
-@pytest.mark.describe("IoTHubRegistryManager - .from_token_credential()")
-class TestFromTokenCredential:
-    @pytest.mark.it(
-        "Creates an instance of IotHubGatewayServiceAPIs and IoTHubAmqpClientTokenAuth with the correct arguments"
-    )
-    def test_token_credential_auth(self, mocker):
-        mock_azure_identity_TokenCredential = mocker.MagicMock()
-        amqp_client_init_mock = mocker.patch.object(iothub_amqp_client, "IoTHubAmqpClientTokenAuth")
-
-        client = IoTHubRegistryManager.from_token_credential(
-            fake_hostname, mock_azure_identity_TokenCredential
-        )
-
-        assert (
-            client.protocol.config.credentials._policy._credential
-            == mock_azure_identity_TokenCredential
-        )
-        assert client.protocol.config.base_url == "https://" + fake_hostname
-        assert amqp_client_init_mock.call_args == mocker.call(
-            fake_hostname, mock_azure_identity_TokenCredential, transport_type=TransportType.Amqp
-        )
-    def test_token_credential_auth_with_amqp_over_websocket(self, mocker):
-        mock_azure_identity_TokenCredential = mocker.MagicMock()
-        amqp_client_init_mock = mocker.patch.object(iothub_amqp_client, "IoTHubAmqpClientTokenAuth")
-
-        client = IoTHubRegistryManager.from_token_credential(
-            fake_hostname, mock_azure_identity_TokenCredential, TransportType.AmqpOverWebsocket
-        )
-
-        assert (
-            client.protocol.config.credentials._policy._credential
-            == mock_azure_identity_TokenCredential
-        )
-        assert client.protocol.config.base_url == "https://" + fake_hostname
-        assert amqp_client_init_mock.call_args == mocker.call(
-            fake_hostname, mock_azure_identity_TokenCredential, transport_type=TransportType.AmqpOverWebsocket
-        )
 
 
 @pytest.mark.describe("IoTHubRegistryManager - .create_device_with_sas()")
@@ -1426,36 +1310,4 @@ class TestInvokeDeviceModuleMethodWithPayloadNone(object):
         assert mock_modules_operations.invoke_method.call_count == 1
         assert mock_modules_operations.invoke_method.call_args == mocker.call(
             fake_device_id, fake_module_id, fake_direct_method_request_with_payload_none
-        )
-
-
-@pytest.mark.describe("IoTHubRegistryManager - .send_c2d_message()")
-class TestSendC2dMessage(object):
-    @pytest.mark.it("Test send c2d message")
-    def test_send_c2d_message(
-        self, mocker, mock_uamqp_send_message_to_device, iothub_registry_manager
-    ):
-
-        iothub_registry_manager.send_c2d_message(fake_device_id, fake_message_to_send)
-
-        assert mock_uamqp_send_message_to_device.call_count == 1
-        assert mock_uamqp_send_message_to_device.call_args == mocker.call(
-            fake_device_id, fake_message_to_send, {}
-        )
-
-
-@pytest.mark.describe("IoTHubRegistryManager - .send_c2d_message() with properties")
-class TestSendC2dMessageWithProperties(object):
-    @pytest.mark.it("Test send c2d message with properties")
-    def test_send_c2d_message_with_properties(
-        self, mocker, mock_uamqp_send_message_to_device, iothub_registry_manager
-    ):
-
-        iothub_registry_manager.send_c2d_message(
-            fake_device_id, fake_message_to_send, fake_properties
-        )
-
-        assert mock_uamqp_send_message_to_device.call_count == 1
-        assert mock_uamqp_send_message_to_device.call_args == mocker.call(
-            fake_device_id, fake_message_to_send, fake_properties
         )
