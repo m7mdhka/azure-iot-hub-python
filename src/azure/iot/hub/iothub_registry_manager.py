@@ -3,7 +3,6 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
-from . import iothub_amqp_client
 from .auth import ConnectionStringAuthentication, AzureIdentityCredentialAdapter
 from .protocol.iot_hub_gateway_service_ap_is import IotHubGatewayServiceAPIs as protocol_client
 from .protocol.models import (
@@ -14,7 +13,6 @@ from .protocol.models import (
     AuthenticationMechanism,
     DeviceCapabilities,
 )
-from uamqp import TransportType
 
 
 def _ensure_quoted(etag):
@@ -51,7 +49,7 @@ class IoTHubRegistryManager(object):
     based on top of the auto generated IotHub REST APIs
     """
 
-    def __init__(self, connection_string=None, host=None, token_credential=None, transport_type=TransportType.Amqp):
+    def __init__(self, connection_string=None, host=None, token_credential=None):
         """Initializer for a Registry Manager Service client.
 
         Users should not call this directly. Rather, they should the from_connection_string()
@@ -64,37 +62,24 @@ class IoTHubRegistryManager(object):
             with IoTHub if we are using connection_str authentication. Default value: None
         :param str host: The Azure service url if we are using token credential authentication.
             Default value: None
-        :param str token_credential: The Azure authentication object if we are using token credential authentication.
+        :param str auth: The Azure authentication object if we are using token credential authentication.
             Default value: None
-        :param transport_type: The underlying transport protocol type: Amqp: AMQP over the default TCP transport protocol, it uses port 5671. AmqpOverWebsocket: Amqp over the Web Sockets transport protocol, it uses port 443.
-            Default value: Amqp
-        :type transport_type: :class:`uamqp.TransportType`
 
         :returns: Instance of the IoTHubRegistryManager object.
         :rtype: :class:`azure.iot.hub.IoTHubRegistryManager`
         """
-        self.amqp_svc_client = None
         if connection_string is not None:
             conn_string_auth = ConnectionStringAuthentication(connection_string)
             self.protocol = protocol_client(
                 conn_string_auth, "https://" + conn_string_auth["HostName"]
             )
-            self.amqp_svc_client = iothub_amqp_client.IoTHubAmqpClientSharedAccessKeyAuth(
-                conn_string_auth["HostName"],
-                conn_string_auth["SharedAccessKeyName"],
-                conn_string_auth["SharedAccessKey"],
-                transport_type,
-            )
         else:
             self.protocol = protocol_client(
                 AzureIdentityCredentialAdapter(token_credential), "https://" + host
             )
-            self.amqp_svc_client = iothub_amqp_client.IoTHubAmqpClientTokenAuth(
-                host, token_credential, transport_type=transport_type
-            )
 
     @classmethod
-    def from_connection_string(cls, connection_string, transport_type=TransportType.Amqp):
+    def from_connection_string(cls, connection_string):
         """Classmethod initializer for a Registry Manager Service client.
         Creates Registry Manager class from connection string.
 
@@ -103,16 +88,13 @@ class IoTHubRegistryManager(object):
 
         :param str connection_string: The IoTHub connection string used to authenticate connection
             with IoTHub.
-        :param transport_type: The underlying transport protocol type: Amqp: AMQP over the default TCP transport protocol, it uses port 5671. AmqpOverWebsocket: Amqp over the Web Sockets transport protocol, it uses port 443.
-            Default value: Amqp
-        :type transport_type: :class:`uamqp.TransportType`
 
         :rtype: :class:`azure.iot.hub.IoTHubRegistryManager`
         """
-        return cls(connection_string=connection_string, transport_type=transport_type)
+        return cls(connection_string=connection_string)
 
     @classmethod
-    def from_token_credential(cls, url, token_credential, transport_type=TransportType.Amqp):
+    def from_token_credential(cls, url, token_credential):
         """Classmethod initializer for a Registry Manager Service client.
         Creates Registry Manager class from host name url and Azure token credential.
 
@@ -122,20 +104,10 @@ class IoTHubRegistryManager(object):
         :param str url: The Azure service url (host name).
         :param token_credential: The Azure token credential object
         :type token_credential: :class:`azure.core.TokenCredential`
-        :param transport_type: The underlying transport protocol type: Amqp: AMQP over the default TCP transport protocol, it uses port 5671. AmqpOverWebsocket: Amqp over the Web Sockets transport protocol, it uses port 443.
-            Default value: Amqp
-        :type transport_type: :class:`uamqp.TransportType`
 
         :rtype: :class:`azure.iot.hub.IoTHubRegistryManager`
         """
-        return cls(host=url, token_credential=token_credential, transport_type=transport_type)
-
-    def __del__(self):
-        """
-        Deinitializer for a Registry Manager Service client.
-        """
-        if self.amqp_svc_client is not None:
-            self.amqp_svc_client.disconnect_sync()
+        return cls(host=url, token_credential=token_credential)
 
     def create_device_with_sas(
         self,
@@ -925,15 +897,3 @@ class IoTHubRegistryManager(object):
             direct_method_request.payload = ""
 
         return self.protocol.modules.invoke_method(device_id, module_id, direct_method_request)
-
-    def send_c2d_message(self, device_id, message, properties={}):
-        """Send a C2D message to a IoTHub Device.
-
-        :param str device_id: The name (Id) of the device.
-        :param str message: The message that is to be delivered to the device.
-        :param dict properties: The properties to be send with the message.  Can contain
-            application properties and system properties
-
-        :raises: Exception if the Send command is not able to send the message
-        """
-        self.amqp_svc_client.send_message_to_device(device_id, message, properties)
